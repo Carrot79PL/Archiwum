@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleIconFile</key><string>AppIcon</string>
+<key>CFBundleName</key><string>Archiwum</string>
+<key>CFBundleDisplayName</key><string>Archiwum</string>
+<key>CFBundleIdentifier</key><string>pl.local.archiwum</string>
+<key>CFBundleExecutable</key><string>Archiwum</string>
+<key>CFBundlePackageType</key><string>APPL</string>
+<key>CFBundleVersion</key><string>1</string>
+<key>CFBundleShortVersionString</key><string>1.0</string>
+<key>LSMinimumSystemVersion</key><string>26.0</string>
+<key>NSHighResolutionCapable</key><true/>
+<key>NSServices</key><array>
+<dict><key>NSMenuItem</key><dict><key>default</key><string>Archiwizuj folder</string></dict><key>NSMessage</key><string>archiveFolder</string><key>NSPortName</key><string>Archiwum</string><key>NSSendFileTypes</key><array><string>public.folder</string></array></dict>
+<dict><key>NSMenuItem</key><dict><key>default</key><string>Archiwizuj w Archiwum…</string></dict><key>NSMessage</key><string>compress</string><key>NSPortName</key><string>Archiwum</string><key>NSSendFileTypes</key><array><string>public.item</string></array></dict>
+<dict><key>NSMenuItem</key><dict><key>default</key><string>Wypakuj tutaj (Archiwum)</string></dict><key>NSMessage</key><string>extractHere</string><key>NSPortName</key><string>Archiwum</string><key>NSSendFileTypes</key><array><string>public.archive</string></array></dict>
+<dict><key>NSMenuItem</key><dict><key>default</key><string>Otwórz w Archiwum</string></dict><key>NSMessage</key><string>openArchive</string><key>NSPortName</key><string>Archiwum</string><key>NSSendFileTypes</key><array><string>public.archive</string></array></dict>
+</array>
+<key>CFBundleDocumentTypes</key><array><dict>
+<key>CFBundleTypeName</key><string>Archiwum</string>
+<key>CFBundleTypeRole</key><string>Viewer</string>
+<key>LSHandlerRank</key><string>Alternate</string>
+<key>CFBundleTypeExtensions</key><array><string>7z</string><string>zip</string><string>rar</string><string>tar</string><string>gz</string><string>tgz</string><string>bz2</string><string>xz</string><string>iso</string><string>cab</string><string>wim</string><string>lzh</string><string>zst</string></array>
+</dict></array>
+</dict></plist>
