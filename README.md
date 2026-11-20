@@ -135,6 +135,16 @@ Sources/
 
 Silnik kompresji (`7zz`) działa jako osobny proces; aplikacja jest wyłącznie warstwą interfejsu i bezpieczeństwa.
 
+## 🤝 Współpraca z Migawką
+
+Jeśli masz zainstalowaną **[Migawkę](https://github.com/Carrot79PL/Migawka)** (bezpieczną przeglądarkę zdjęć, filmów i archiwów), Archiwum potrafi się z nią zintegrować:
+
+- w pasku narzędzi pojawia się przycisk **Migawka** — otwiera całe archiwum w Migawce (która rozpakowuje je na własny dysk RAM i obsługuje hasło),
+- zaznaczenie **zdjęć lub filmów** i kliknięcie **Otwórz** przekazuje archiwum do Migawki, a pozostałe pliki (dokumenty, kod…) otwierają się w domyślnych aplikacjach z dysku RAM Archiwum,
+- prawy klik na pliku → **Otwórz archiwum w Migawce**.
+
+Bez Migawki wszystko działa tak samo — zdjęcia i filmy otwierają się wtedy z dysku RAM Archiwum.
+
 ## Uczciwie o ograniczeniach
 
 - **Hasło jest przekazywane do silnika 7-Zip jako argument procesu** (`-p…`) — w trakcie operacji widzą je procesy tego samego użytkownika (np. `ps`). 7-Zip nie pozwala w tym trybie na inną drogę.
@@ -142,6 +152,7 @@ Silnik kompresji (`7zz`) działa jako osobny proces; aplikacja jest wyłącznie 
 - Zerowanie pamięci przed odmontowaniem nie gwarantuje braku śladów w **pliku wymiany (swap)** — macOS domyślnie go szyfruje, ale to nie jest absolutna gwarancja. Zewnętrzne aplikacje, w których otwierasz pliki, mogą zapisać własne ślady.
 - Aplikacja **nie jest notaryzowana** (ad-hoc podpis), działa na Apple Silicon i macOS 26+.
 - Tryb jasny, wiele okien i wersja angielska nie są jeszcze dostępne.
+- Migawka rozpakowuje całe archiwum (nie pojedyncze pliki) i prosi o hasło osobno.
 
 ## Licencje
 
