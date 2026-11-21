@@ -27,7 +27,7 @@ import CryptoKit
             check("create \(f.rawValue)\(pw.isEmpty ? "" : " +hasło")", r.status == 0 && fm.fileExists(atPath: out.path))
         }
     }
-    let s = Store.shared; s.revealAfter = false
+    let s = Store(); s.revealAfter = false
     // 2. Otwieranie, nawigacja, wyszukiwanie
     await s.open(dir.appendingPathComponent("t_pw.7z"))
     check("zaszyfrowane 7z wymaga hasła", s.pendingOpen != nil)
@@ -60,6 +60,13 @@ import CryptoKit
     let extra = dir.appendingPathComponent("extra.txt"); try? "x".write(to: extra, atomically: true, encoding: .utf8)
     await s.addFiles([extra]); check("dodanie pliku", s.entries.contains { $0.path == "extra.txt" })
     await s.deleteEntries(["src/docs"]); check("usunięcie folderu", !s.entries.contains { $0.path.hasPrefix("src/docs") })
+    // 5b. Upuszczenie plików na otwarte archiwum → wybór „dodaj / utwórz”
+    let extra2 = dir.appendingPathComponent("extra2.txt"); try? "y".write(to: extra2, atomically: true, encoding: .utf8)
+    s.handleDrop([extra2]); check("upuszczenie na otwarte archiwum pyta o akcję", s.dropChoice != nil && s.canModify)
+    s.applyDrop(.add); try? await Task.sleep(for: .seconds(2.5))
+    check("upuszczone pliki dodane do archiwum", s.entries.contains { $0.path == "extra2.txt" })
+    let before = Registry.pending.count
+    s.handleDrop([dir.appendingPathComponent("t.zip")]); check("inne archiwum → osobne okno", Registry.pending.count == before + 1); Registry.pending.removeAll()
     // 6. Wrapped tar.xz
     await s.open(dir.appendingPathComponent("t.tar.xz"))
     check("tar.xz otwarty strumieniowo", s.entries.contains { $0.path.hasSuffix("big.txt") }, "\(s.entries.count) wpisów")

@@ -56,7 +56,7 @@ struct Shimmer: View {
 }
 
 struct ProgressOverlay: View {
-    @ObservedObject var s = Store.shared
+    @EnvironmentObject var s: Store
     var body: some View {
         let p = s.progress ?? 0
         ZStack {
@@ -97,7 +97,7 @@ struct ProgressOverlay: View {
 
 struct ResultCard: View {
     var r: JobResult
-    @ObservedObject var s = Store.shared
+    @EnvironmentObject var s: Store
     @State private var drawn: CGFloat = 0
     @State private var pop = false
     @State private var burst = false
@@ -228,7 +228,7 @@ struct TreemapView: View {
 // MARK: Duplikaty
 
 struct DuplicatesSheet: View {
-    @ObservedObject var s = Store.shared
+    @EnvironmentObject var s: Store
     var body: some View {
         let groups = s.duplicates
         let wasted = groups.reduce(Int64(0)) { $0 + $1[0].size * Int64($1.count - 1) }

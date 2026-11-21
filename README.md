@@ -64,6 +64,7 @@ i używa sprawdzonego silnika **7-Zip** — więc potrafi tyle, co 7-Zip, ale je
 - Wypakowywanie całości lub zaznaczonych plików (zaznaczanie: kółka, ⌘/⇧ + klik, ⌘A), opcje podfolderu i zachowania przy istniejących plikach.
 - **Dodawanie i usuwanie plików** w istniejących archiwach 7z/ZIP.
 - **Test integralności**, **ratowanie danych** z uszkodzonych archiwów, **konwersja** między formatami (przez dysk RAM).
+- **Wiele okien** — każde archiwum we własnym oknie; **przeciąganie plików z jednego archiwum do drugiego** (dodaj do archiwum albo utwórz nowe).
 - **Wypakowywanie wsadowe** — upuść kilka archiwów naraz.
 - **Porównywanie** archiwum z innym archiwum lub folderem, **szukanie w treści plików**, eksport listy do CSV.
 - Sumy kontrolne **SHA-256** (plik `.sha256`) i **podpisy cyfrowe Ed25519** (`.sig`).
@@ -152,7 +153,7 @@ Bez Migawki wszystko działa tak samo — zdjęcia i filmy otwierają się wtedy
 - Zerowanie pamięci przed odmontowaniem nie gwarantuje braku śladów w **pliku wymiany (swap)** — macOS domyślnie go szyfruje, ale to nie jest absolutna gwarancja. Zewnętrzne aplikacje, w których otwierasz pliki, mogą zapisać własne ślady.
 - Niektóre RAR-y (np. z metodami spoza obsługi 7-Zip, błąd „Unsupported Method”) Archiwum rozpakowuje zapasowo przez zewnętrzny `unrar`, jeśli jest zainstalowany (`brew install unrar`) — wykrywa go samo.
 - Aplikacja **nie jest notaryzowana** (ad-hoc podpis), działa na Apple Silicon i macOS 26+.
-- Tryb jasny, wiele okien i wersja angielska nie są jeszcze dostępne.
+- Tryb jasny i wersja angielska nie są jeszcze dostępne.
 - Migawka rozpakowuje całe archiwum (nie pojedyncze pliki) i prosi o hasło osobno.
 
 ## Licencje

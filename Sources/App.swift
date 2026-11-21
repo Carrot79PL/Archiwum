@@ -50,7 +50,6 @@ enum Pending { case extract(URL, [String]), test, open([String]), preview(String
 struct PreviewItem: Identifiable { let id = UUID(); var name: String; var data: Data }
 
 @MainActor final class Store: ObservableObject {
-    static let shared = Store()
     @Published var url: URL?
     @Published var entries: [Entry] = []
     @Published var cwd: [String] = []
@@ -109,14 +108,24 @@ struct PreviewItem: Identifiable { let id = UUID(); var name: String; var data: 
     @Published var createOpts = CreateOptions()
     @Published var createConfirm = ""
     var proc: RawProcess?
-    private init() { Engine.onFile = { f in Task { @MainActor in Store.shared.currentFile = f } } }
+    let id = UUID()
+    weak var window: NSWindow?
+    @Published var dropChoice: DropChoice?
+    init() { Registry.add(self); startLockTimer() }
+    func attach(_ w: NSWindow) {
+        window = w
+        if w.isKeyWindow { Registry.active = self }
+        NotificationCenter.default.addObserver(forName: NSWindow.didBecomeKeyNotification, object: w, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { if let self { Registry.active = self } }
+        }
+    }
 
     func finish(_ r: JobResult) {
         result = r
         if UserDefaults.standard.object(forKey: "sound") as? Bool ?? true { NSSound(named: "Glass")?.play() }
         Notifier.post(r.title, r.detail)
         let id = r.id
-        Task { try? await Task.sleep(for: .seconds(9)); if Store.shared.result?.id == id { Store.shared.result = nil } }
+        Task { try? await Task.sleep(for: .seconds(9)); if self.result?.id == id { self.result = nil } }
     }
     /// Czy wybrane elementy (albo całe archiwum, gdy `sel` puste) zawierają zaszyfrowane pliki — tylko wtedy pytamy o hasło.
     func needsPassword(for sel: [String]) -> Bool {
@@ -167,14 +176,14 @@ struct PreviewItem: Identifiable { let id = UUID(); var name: String; var data: 
         busy = "Rozpakowywanie…"; progress = 0; jobStart = Date(); job = .unpack; currentFile = ""
         var args = ["x", "-y", "-bsp1", "-spd", "-o" + d.path]; if password != nil { args.append("-p") }; args.append(u.path)
         let r1: RunResult
-        if wrapped { r1 = await Engine.runPipe(["x", "-so", "-spd", u.path], ["x", "-si", "-ttar", "-y", "-spd", "-o" + d.path], onStart: { p in Task { @MainActor in Store.shared.proc = p } }) }
-        else { r1 = await Engine.run(Engine.sevenZip, args, password: password, onStart: { p in Task { @MainActor in Store.shared.proc = p } }, progress: { v in Task { @MainActor in Store.shared.progress = v / 2 } }) }
+        if wrapped { r1 = await Engine.runPipe(["x", "-so", "-spd", u.path], ["x", "-si", "-ttar", "-y", "-spd", "-o" + d.path], onStart: { p in Task { @MainActor in self.proc = p } }) }
+        else { r1 = await Engine.run(Engine.sevenZip, args, password: password, onStart: { p in Task { @MainActor in self.proc = p } }, progress: { v in Task { @MainActor in self.progress = v / 2 } }, onFile: { f in Task { @MainActor in self.currentFile = f } }) }
         guard r1.status == 0 else { fail(r1.status == 255 ? "Anulowano." : "Błąd rozpakowywania:\n" + String(r1.out.suffix(300))); return }
         let kids = (try? FileManager.default.contentsOfDirectory(at: d, includingPropertiesForKeys: nil)) ?? []
         var o = convertOpts; o.files = kids; o.trashOriginals = false
         busy = "Pakowanie…"; progress = 0.5; job = .pack; currentFile = ""
-        let r2 = await Engine.create(o, output: out, onStart: { p in Task { @MainActor in Store.shared.proc = p } },
-                                     progress: { v in Task { @MainActor in Store.shared.progress = 0.5 + v / 2 } })
+        let r2 = await Engine.create(o, output: out, onStart: { p in Task { @MainActor in self.proc = p } },
+                                     progress: { v in Task { @MainActor in self.progress = 0.5 + v / 2 } }, onFile: { f in Task { @MainActor in self.currentFile = f } })
         RamDisk.eject()
         busy = nil; progress = nil; job = .none; convertOpts = CreateOptions()
         if r2.status == 0 {
@@ -279,14 +288,13 @@ struct PreviewItem: Identifiable { let id = UUID(); var name: String; var data: 
     func openPanel() {
         let p = NSOpenPanel(); p.canChooseFiles = true; p.canChooseDirectories = false
         p.message = "Wybierz archiwum"
-        if p.runModal() == .OK, let u = p.url { Task { await open(u) } }
+        if p.runModal() == .OK, let u = p.url { Registry.route(u, in: self) }
     }
 
     func open(_ u: URL, password pw: String? = nil) async {
         busy = "Otwieranie…"; defer { busy = nil }
         var (list, ainfo, res) = await Engine.list(u, password: pw)
         wrapped = false
-        wipe()
         if list.count == 1, list[0].path.hasSuffix(".tar"), !u.lastPathComponent.hasSuffix(".tar") {
             let l2 = await Engine.listWrapped(u)
             if !l2.isEmpty { list = l2; res = RunResult(out: "", status: 0); wrapped = true }
@@ -341,8 +349,8 @@ struct PreviewItem: Identifiable { let id = UUID(); var name: String; var data: 
         if entries.contains(where: { $0.encrypted }) && password == nil { notice = "Archiwum jest zaszyfrowane — otwórz je z hasłem, aby je zmienić."; return }
         busy = "Dodawanie…"; progress = 0; jobStart = Date(); job = .add; currentFile = ""
         let res = await Engine.add(to: u, files: urls, password: password,
-                                   onStart: { p in Task { @MainActor in Store.shared.proc = p } },
-                                   progress: { v in Task { @MainActor in Store.shared.progress = v } })
+                                   onStart: { p in Task { @MainActor in self.proc = p } },
+                                   progress: { v in Task { @MainActor in self.progress = v } }, onFile: { f in Task { @MainActor in self.currentFile = f } })
         busy = nil; progress = nil; proc = nil; job = .none
         if res.status == 0 { let t = elapsed; await open(u, password: password); finish(JobResult(icon: "doc.badge.plus", title: "Dodano do archiwum", detail: "\(urls.count) elem.", lines: [("Czas", t)])) }
         else { notice = "Błąd:\n" + String(res.out.suffix(400)) }
@@ -453,11 +461,11 @@ struct PreviewItem: Identifiable { let id = UUID(); var name: String; var data: 
         if wrapped, case .extract(let d, let sel) = a {
             res = await Engine.runPipe(["x", "-so", "-spd", u.path],
                                        ["x", "-si", "-ttar", "-y", overwrite.flag, "-spd", "-o" + d.path] + sel,
-                                       onStart: { p in Task { @MainActor in Store.shared.proc = p } })
+                                       onStart: { p in Task { @MainActor in self.proc = p } })
         } else {
             res = await Engine.run(Engine.sevenZip, args, password: password,
-                                   onStart: { p in Task { @MainActor in Store.shared.proc = p } },
-                                   progress: { v in Task { @MainActor in Store.shared.progress = v } })
+                                   onStart: { p in Task { @MainActor in self.proc = p } },
+                                   progress: { v in Task { @MainActor in self.progress = v } }, onFile: { f in Task { @MainActor in self.currentFile = f } })
         }
         // Zapasowy silnik dla RAR-ów, których 7-Zip nie rozpakuje (np. „Unsupported Method”)
         var unrarHint = false
@@ -466,8 +474,8 @@ struct PreviewItem: Identifiable { let id = UUID(); var name: String; var data: 
                 busy = "Wypakowywanie (unrar)…"; progress = 0
                 let pats = Engine.unrarPatterns(sl) { id in entries.contains { $0.path.hasPrefix(id + "/") } }
                 res = await Engine.runUnrar(un, archive: u, dest: d, patterns: pats, password: password, overwriteFlag: overwrite.flag,
-                                            onStart: { p in Task { @MainActor in Store.shared.proc = p } },
-                                            progress: { v in Task { @MainActor in Store.shared.progress = v } })
+                                            onStart: { p in Task { @MainActor in self.proc = p } },
+                                            progress: { v in Task { @MainActor in self.progress = v } })
             } else { unrarHint = true }
         }
         busy = nil; progress = nil; proc = nil; job = .none
@@ -499,8 +507,8 @@ struct PreviewItem: Identifiable { let id = UUID(); var name: String; var data: 
     }
 
     func startLockTimer() {
-        timer = Timer.scheduledTimer(withTimeInterval: 20, repeats: true) { _ in
-            Task { @MainActor in Store.shared.lockIfIdle() }
+        timer = Timer.scheduledTimer(withTimeInterval: 20, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.lockIfIdle() }
         }
     }
     func lockIfIdle() {
@@ -558,8 +566,8 @@ struct PreviewItem: Identifiable { let id = UUID(); var name: String; var data: 
         }.value
         busy = "Tworzenie archiwum…"; progress = 0; jobStart = Date(); job = .pack; currentFile = ""
         let res = await Engine.create(o, output: out,
-                                      onStart: { p in Task { @MainActor in Store.shared.proc = p } },
-                                      progress: { v in Task { @MainActor in Store.shared.progress = v } })
+                                      onStart: { p in Task { @MainActor in self.proc = p } },
+                                      progress: { v in Task { @MainActor in self.progress = v } }, onFile: { f in Task { @MainActor in self.currentFile = f } })
         busy = nil; progress = nil; proc = nil; job = .none; createOpts = CreateOptions(); createConfirm = ""
         var verifyLine: String? = nil
         if res.status == 0, o.verify, o.format.supportsPassword, o.volumeMB == 0 {
@@ -582,11 +590,18 @@ struct PreviewItem: Identifiable { let id = UUID(); var name: String; var data: 
     }
 
     func handleDrop(_ urls: [URL]) {
-        if urls.count > 1, urls.allSatisfy({ Store.archiveExt.contains($0.pathExtension.lowercased()) }) {
+        guard !urls.isEmpty else { return }
+        func isArc(_ u: URL) -> Bool { Store.archiveExt.contains(u.pathExtension.lowercased()) && !u.hasDirectoryPath }
+        if urls.count > 1, urls.allSatisfy(isArc) {
             batchURLs = urls; batchStatus = [:]; if batchDest == nil { batchDest = urls[0].deletingLastPathComponent() }; showBatch = true; return
         }
-        if urls.count == 1, !urls[0].hasDirectoryPath { Task { await open(urls[0]) } }
-        else { createOpts.files = urls; showCreate = true }
+        if url == nil {
+            if urls.count == 1, !urls[0].hasDirectoryPath { Registry.route(urls[0], in: self) }
+            else { createOpts = CreateOptions(); createOpts.files = urls; showCreate = true }
+            return
+        }
+        if urls.count == 1, isArc(urls[0]) { Registry.openInNewWindow(urls[0]); return }   // another archive → its own window
+        dropChoice = DropChoice(urls: urls)
     }
 }
 
@@ -602,6 +617,7 @@ struct PreviewItem: Identifiable { let id = UUID(); var name: String; var data: 
             RamDisk.eject(); exit(0)
         }
         signal(SIGPIPE, SIG_IGN)
+        NSWindow.allowsAutomaticWindowTabbing = false
         if let i = CommandLine.arguments.firstIndex(of: "--selftest"), i + 1 < CommandLine.arguments.count {
             let d = URL(fileURLWithPath: CommandLine.arguments[i + 1])
             Task { @MainActor in await runSelfTest(d) }
@@ -611,43 +627,42 @@ struct PreviewItem: Identifiable { let id = UUID(); var name: String; var data: 
         _ = ptrace_(31, 0, nil, 0)                                                // PT_DENY_ATTACH
         UserDefaults.standard.register(defaults: ["NSQuitAlwaysKeepsWindows": false])
         RamDisk.ejectStale()
-        Store.shared.startLockTimer()
         NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: nil) { _ in Store.wipePreviews() }
         NotificationCenter.default.addObserver(forName: NSApplication.willResignActiveNotification, object: nil, queue: .main) { _ in }
     }
     var body: some Scene {
-        Window("Archiwum", id: "main") {
-            ContentView().onOpenURL { u in Task { await Store.shared.open(u) } }
+        WindowGroup(id: "main") {
+            WindowRoot()
         }
         .restorationBehavior(.disabled)
         .defaultSize(width: 1120, height: 720)
         .windowToolbarStyle(.unified)
         .commands {
             CommandGroup(replacing: .newItem) {
-                Button("Nowe archiwum…") { Store.shared.createOpts = CreateOptions(); Store.shared.showCreate = true }.keyboardShortcut("n")
-                Button("Otwórz archiwum…") { Store.shared.openPanel() }.keyboardShortcut("o")
+                Button("Nowe archiwum…") { Registry.withStore { st in st.createOpts = CreateOptions(); st.showCreate = true } }.keyboardShortcut("n")
+                Button("Otwórz archiwum…") { Registry.withStore { st in st.openPanel() } }.keyboardShortcut("o")
             }
             CommandMenu("Archiwum") {
-                Button("Porównaj z…") { Store.shared.comparePick() }
-                Button("Szukaj w treści plików…") { Store.shared.showSearch = true }.keyboardShortcut("f", modifiers: [.command, .shift])
-                Button("Ratuj dane z uszkodzonego archiwum…") { Store.shared.recover() }
-                Button("Zapisz sumę SHA-256 (.sha256)") { Store.shared.writeSHAFile() }
-                Button("Zweryfikuj z plikiem .sha256") { Store.shared.verifySHAFile() }
-                Button("Podpisz cyfrowo (Ed25519)") { Store.shared.signArchive() }
-                Button("Zweryfikuj podpis cyfrowy") { Store.shared.verifySignature() }
+                Button("Porównaj z…") { Registry.withStore { st in st.comparePick() } }
+                Button("Szukaj w treści plików…") { Registry.withStore { st in st.showSearch = true } }.keyboardShortcut("f", modifiers: [.command, .shift])
+                Button("Ratuj dane z uszkodzonego archiwum…") { Registry.withStore { st in st.recover() } }
+                Button("Zapisz sumę SHA-256 (.sha256)") { Registry.withStore { st in st.writeSHAFile() } }
+                Button("Zweryfikuj z plikiem .sha256") { Registry.withStore { st in st.verifySHAFile() } }
+                Button("Podpisz cyfrowo (Ed25519)") { Registry.withStore { st in st.signArchive() } }
+                Button("Zweryfikuj podpis cyfrowy") { Registry.withStore { st in st.verifySignature() } }
                 Divider()
-                Button("Testuj archiwum") { Task { await Store.shared.perform(.test) } }.keyboardShortcut("t", modifiers: [.command, .shift])
-                Button("Konwertuj do innego formatu…") { Store.shared.convertOpts = CreateOptions(); Store.shared.showConvert = true }
-                Button("Dodaj pliki do archiwum…") { Store.shared.addFiles() }
-                Button("Szukaj duplikatów") { Store.shared.showDuplicates = true }
-                Button("Oblicz SHA-256 archiwum") { Store.shared.computeSHA() }
+                Button("Testuj archiwum") { Registry.withStore { st in Task { await st.perform(.test) } } }.keyboardShortcut("t", modifiers: [.command, .shift])
+                Button("Konwertuj do innego formatu…") { Registry.withStore { st in st.convertOpts = CreateOptions(); st.showConvert = true } }
+                Button("Dodaj pliki do archiwum…") { Registry.withStore { st in st.addFiles() } }
+                Button("Szukaj duplikatów") { Registry.withStore { st in st.showDuplicates = true } }
+                Button("Oblicz SHA-256 archiwum") { Registry.withStore { st in st.computeSHA() } }
                 Divider()
-                Button("Eksportuj listę zawartości (CSV)…") { Store.shared.exportList() }
-                Button("Zablokuj (zapomnij hasło)") { Store.shared.lock() }.keyboardShortcut("l", modifiers: [.command, .shift])
+                Button("Eksportuj listę zawartości (CSV)…") { Registry.withStore { st in st.exportList() } }
+                Button("Zablokuj (zapomnij hasło)") { Registry.withStore { st in st.lock() } }.keyboardShortcut("l", modifiers: [.command, .shift])
             }
         }
         Settings { SettingsView() }
-        .commands { CommandGroup(replacing: .help) { Button("Pomoc i skróty") { Store.shared.showHelp = true } } }
+        .commands { CommandGroup(replacing: .help) { Button("Pomoc i skróty") { Registry.withStore { st in st.showHelp = true } } } }
     }
 }
 
@@ -660,7 +675,7 @@ struct PDFBox: NSViewRepresentable {
 
 struct PreviewView: View {
     var item: PreviewItem
-    @ObservedObject var s = Store.shared
+    @EnvironmentObject var s: Store
     var ext: String { (item.name as NSString).pathExtension.lowercased() }
     var text: String? {
         guard item.data.count < 4 << 20, !item.data.contains(0) else { return nil }

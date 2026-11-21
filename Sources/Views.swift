@@ -108,7 +108,7 @@ struct RowView: View {
 }
 
 struct ContentView: View {
-    @ObservedObject var s = Store.shared
+    @EnvironmentObject var s: Store
     @State private var sel = Set<String>()
     @State private var anchor: String?
     @State private var targeted = false
@@ -127,9 +127,10 @@ struct ContentView: View {
         .frame(minWidth: 980, minHeight: 640)
         .foregroundStyle(.white)
         .background { GlassBackground(radius: 0) }
-        .background(WindowGlass())
+        .background(WindowGlass(onWindow: { w in s.attach(w) }))
+        .navigationTitle(s.url?.lastPathComponent ?? "Archiwum")
         .environment(\.colorScheme, .dark)
-        .dropDestination(for: URL.self) { urls, _ in s.handleDrop(urls); return true } isTargeted: { targeted = $0 }
+        .onDrop(of: [.fileURL, .item], isTargeted: $targeted) { providers in s.handleProviders(providers) }
         .overlay {
             if targeted {
                 ZStack {
@@ -174,6 +175,11 @@ struct ContentView: View {
         .sheet(isPresented: Binding(get: { s.pending != nil || s.pendingOpen != nil }, set: { if !$0 { s.pending = nil; s.pendingOpen = nil } })) {
             PasswordSheet(error: s.passwordError)
         }
+        .confirmationDialog("Upuszczono \(s.dropChoice?.count ?? 0) elem.", isPresented: Binding(get: { s.dropChoice != nil }, set: { if !$0 { s.dropChoice = nil } }), titleVisibility: .visible) {
+            if s.canModify { Button("Dodaj do „\(s.url?.lastPathComponent ?? "")”") { s.applyDrop(.add) } }
+            Button("Utwórz nowe archiwum") { s.applyDrop(.create) }
+            Button("Anuluj", role: .cancel) { s.dropChoice = nil }
+        } message: { Text(s.canModify ? "Dodać do otwartego archiwum czy utworzyć nowe?" : "To archiwum jest tylko do odczytu — można utworzyć nowe.") }
         .alert("Usunąć z archiwum?", isPresented: Binding(get: { !s.deleteIDs.isEmpty }, set: { if !$0 { s.deleteIDs = [] } })) {
             Button("Usuń", role: .destructive) { let ids = s.deleteIDs; s.deleteIDs = []; sel = []; Task { await s.deleteEntries(ids) } }
             Button("Anuluj", role: .cancel) { s.deleteIDs = [] }
@@ -390,7 +396,7 @@ struct ContentView: View {
                         }.padding(.horizontal, 20).padding(.vertical, 6)
                         .animation(.snappy(duration: 0.28), value: rows.map(\.id))
                         .dragContainerSelection(Array(sel))
-                        .dragContainer(for: DragFile.self) { ids in MainActor.assumeIsolated { Store.shared.dragFiles(ids) } }
+                        .dragContainer(for: DragFile.self) { ids in MainActor.assumeIsolated { s.dragFiles(ids) } }
                     }
                     .focusable().focused($listFocus).focusEffectDisabled()
                     .onKeyPress(.upArrow) { move(-1, rows); return .handled }
@@ -448,7 +454,7 @@ struct ContentView: View {
 // MARK: Panel informacji
 
 struct InspectorView: View {
-    @ObservedObject var s = Store.shared
+    @EnvironmentObject var s: Store
     var selection: Set<String>
 
     func line(_ k: String, _ v: String) -> some View {
@@ -567,7 +573,7 @@ struct InspectorView: View {
 // MARK: Arkusze
 
 struct ExtractSheet: View {
-    @ObservedObject var s = Store.shared
+    @EnvironmentObject var s: Store
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 12) {
@@ -597,7 +603,7 @@ struct ExtractSheet: View {
 }
 
 struct PasswordSheet: View {
-    @ObservedObject var s = Store.shared
+    @EnvironmentObject var s: Store
     var error: Bool
     @State private var pw = ""
     @State private var show = false
@@ -621,7 +627,7 @@ struct PasswordSheet: View {
 }
 
 struct CreateView: View {
-    @ObservedObject var s = Store.shared
+    @EnvironmentObject var s: Store
     @State private var showPw = false
     var o: Binding<CreateOptions> { $s.createOpts }
     var pw: String { s.createOpts.password }
@@ -705,7 +711,7 @@ struct CreateView: View {
 
 
 struct ConvertSheet: View {
-    @ObservedObject var s = Store.shared
+    @EnvironmentObject var s: Store
     var o: Binding<CreateOptions> { $s.convertOpts }
     @State private var confirm = ""
     var ok: Bool { s.convertOpts.password.isEmpty || s.convertOpts.password == confirm }
@@ -740,7 +746,7 @@ struct ConvertSheet: View {
 }
 
 struct BatchSheet: View {
-    @ObservedObject var s = Store.shared
+    @EnvironmentObject var s: Store
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 12) {

@@ -253,7 +253,9 @@ extension Store {
         guard let u = url else { return [] }
         func size(_ id: String) -> Int64 { entries.filter { !$0.isDir && ($0.path == id || $0.path.hasPrefix(id + "/")) }.reduce(0) { $0 + $1.size } }
         let total = ids.reduce(Int64(0)) { $0 + size($1) }
-        return ids.map { DragFile(id: $0, name: ($0 as NSString).lastPathComponent, archive: u, wrapped: wrapped, password: password, size: total) }
+        let files = ids.map { DragFile(id: $0, name: ($0 as NSString).lastPathComponent, archive: u, wrapped: wrapped, password: password, size: total) }
+        DragState.set(files, from: id)
+        return files
     }
 }
 
@@ -274,7 +276,7 @@ struct DragFile: Transferable, Identifiable, Sendable {
 struct ThumbGrid: View {
     var rows: [Row]; var sel: Set<String>
     var onTap: (Row) -> Void; var onOpen: (Row) -> Void
-    @ObservedObject var s = Store.shared
+    @EnvironmentObject var s: Store
     var body: some View {
         ScrollView {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 130, maximum: 170), spacing: 10)], spacing: 10) {
@@ -297,13 +299,13 @@ struct ThumbGrid: View {
                 }
             }.padding(.horizontal, 20).padding(.vertical, 8)
             .dragContainerSelection(Array(sel))
-            .dragContainer(for: DragFile.self) { ids in MainActor.assumeIsolated { Store.shared.dragFiles(ids) } }
+            .dragContainer(for: DragFile.self) { ids in MainActor.assumeIsolated { s.dragFiles(ids) } }
         }
     }
 }
 
 struct DiffSheet: View {
-    @ObservedObject var s = Store.shared
+    @EnvironmentObject var s: Store
     func group(_ title: String, _ items: [String], _ color: Color, _ icon: String) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             Label("\(title) (\(items.count))", systemImage: icon).font(.system(size: 13, weight: .semibold)).foregroundStyle(color)
@@ -336,7 +338,7 @@ struct DiffSheet: View {
 }
 
 struct ContentSearchSheet: View {
-    @ObservedObject var s = Store.shared
+    @EnvironmentObject var s: Store
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 12) {
@@ -379,7 +381,7 @@ struct WarningsPopover: View {
 }
 
 struct HelpSheet: View {
-    @ObservedObject var s = Store.shared
+    @EnvironmentObject var s: Store
     let rows: [(String, String)] = [
         ("Przeciągnij archiwum", "otwiera je; kilka archiwów naraz → wypakowanie wsadowe"), ("Przeciągnij pliki", "tworzy nowe archiwum"),
         ("Dwuklik / Enter", "otwiera plik (dysk RAM) lub wchodzi do folderu"), ("Spacja", "podgląd w pamięci (obraz, PDF, tekst, wideo)"),

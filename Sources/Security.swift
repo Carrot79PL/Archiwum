@@ -107,19 +107,19 @@ final class ServicesProvider: NSObject {
     func urls(_ pb: NSPasteboard) -> [URL] { (pb.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? [] }
     @objc func archiveFolder(_ pb: NSPasteboard, userData: String, error: AutoreleasingUnsafeMutablePointer<NSString>) {
         let u = urls(pb); guard !u.isEmpty else { return }
-        DispatchQueue.main.async { NSApp.activate(ignoringOtherApps: true); Task { await Store.shared.quickArchive(u) } }
+        Task { @MainActor in NSApp.activate(ignoringOtherApps: true); Registry.withStore { st in Task { await st.quickArchive(u) } } }
     }
     @objc func compress(_ pb: NSPasteboard, userData: String, error: AutoreleasingUnsafeMutablePointer<NSString>) {
         let u = urls(pb)
-        DispatchQueue.main.async { Store.shared.createOpts = CreateOptions(); Store.shared.createOpts.files = u; Store.shared.showCreate = true; NSApp.activate(ignoringOtherApps: true) }
+        Task { @MainActor in NSApp.activate(ignoringOtherApps: true); Registry.withStore { st in st.createOpts = CreateOptions(); st.createOpts.files = u; st.showCreate = true } }
     }
     @objc func extractHere(_ pb: NSPasteboard, userData: String, error: AutoreleasingUnsafeMutablePointer<NSString>) {
         let u = urls(pb); guard !u.isEmpty else { return }
-        DispatchQueue.main.async { NSApp.activate(ignoringOtherApps: true); Store.shared.extractHere(u) }
+        Task { @MainActor in NSApp.activate(ignoringOtherApps: true); Registry.withStore { $0.extractHere(u) } }
     }
     @objc func openArchive(_ pb: NSPasteboard, userData: String, error: AutoreleasingUnsafeMutablePointer<NSString>) {
         guard let u = urls(pb).first else { return }
-        DispatchQueue.main.async { Task { await Store.shared.open(u) }; NSApp.activate(ignoringOtherApps: true) }
+        Task { @MainActor in NSApp.activate(ignoringOtherApps: true); if let st = Registry.current { Registry.route(u, in: st) } else { Registry.openInNewWindow(u) } }
     }
 }
 

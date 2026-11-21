@@ -75,10 +75,12 @@ struct GlyphBadge: View {
 
 /// Czyni okno przezroczystym (jak panele Sejfu), z zaokrąglonym szklanym tłem.
 struct WindowGlass: NSViewRepresentable {
+    var onWindow: ((NSWindow) -> Void)? = nil
     func makeNSView(context: Context) -> NSView {
         let v = NSView()
         DispatchQueue.main.async {
             guard let w = v.window else { return }
+            onWindow?(w)
             w.isOpaque = false
             w.backgroundColor = .clear
             w.titlebarAppearsTransparent = true

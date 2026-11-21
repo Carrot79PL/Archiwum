@@ -32,7 +32,6 @@ enum Engine {
     }
     static let bsdtar = URL(fileURLWithPath: "/usr/bin/bsdtar")
 
-    nonisolated(unsafe) static var onFile: (@Sendable (String) -> Void)?
     static let fileRx = try! NSRegularExpression(pattern: #"^\s*\d+%(?:\s+\d+)?\s+[-+U.]\s+(.+?)\s*$"#)
     static func lastFile(_ s: String) -> String? {
         for line in s.split(whereSeparator: { $0 == "\r" || $0 == "\n" }).reversed() {
@@ -48,7 +47,8 @@ enum Engine {
 
     static func run(_ exe: URL, _ args: [String], password: String? = nil, cwd: URL? = nil,
                     onStart: (@Sendable (RawProcess) -> Void)? = nil,
-                    progress: (@Sendable (Double) -> Void)? = nil) async -> RunResult {
+                    progress: (@Sendable (Double) -> Void)? = nil,
+                    onFile: (@Sendable (String) -> Void)? = nil) async -> RunResult {
         await withCheckedContinuation { cont in
             let p = RawProcess()
             p.executableURL = exe
@@ -129,12 +129,12 @@ enum Engine {
     }
 
     /// Dodaje pliki do istniejącego archiwum (7z/zip).
-    static func add(to archive: URL, files: [URL], password: String?, onStart: (@Sendable (RawProcess) -> Void)?, progress: (@Sendable (Double) -> Void)?) async -> RunResult {
+    static func add(to archive: URL, files: [URL], password: String?, onStart: (@Sendable (RawProcess) -> Void)?, progress: (@Sendable (Double) -> Void)?, onFile: (@Sendable (String) -> Void)? = nil) async -> RunResult {
         let parent = files[0].deletingLastPathComponent()
         let same = files.allSatisfy { $0.deletingLastPathComponent() == parent }
         var a = ["a", "-bsp1", "-spd"]; if password != nil { a.append("-p") }
         a.append(archive.path); a += files.map { same ? $0.lastPathComponent : $0.path }
-        return await run(sevenZip, a, password: password, cwd: parent, onStart: onStart, progress: progress)
+        return await run(sevenZip, a, password: password, cwd: parent, onStart: onStart, progress: progress, onFile: onFile)
     }
 
     /// Usuwa wpisy z archiwum.
@@ -274,7 +274,7 @@ enum Method: String, CaseIterable, Identifiable {
 
 extension Engine {
     static func create(_ o: CreateOptions, output: URL,
-                       onStart: (@Sendable (RawProcess) -> Void)?, progress: (@Sendable (Double) -> Void)?) async -> RunResult {
+                       onStart: (@Sendable (RawProcess) -> Void)?, progress: (@Sendable (Double) -> Void)?, onFile: (@Sendable (String) -> Void)? = nil) async -> RunResult {
         try? FileManager.default.removeItem(at: output)
         let parent = o.files[0].deletingLastPathComponent()
         let same = o.files.allSatisfy { $0.deletingLastPathComponent() == parent }
@@ -295,7 +295,7 @@ extension Engine {
                 if o.format == .sevenZ { if o.encryptNames { a.append("-mhe=on") } } else { a.append("-mem=AES256") }
             }
             a.append(output.path); a += names
-            return await run(sevenZip, a, password: pw ? o.password : nil, cwd: parent, onStart: onStart, progress: progress)
+            return await run(sevenZip, a, password: pw ? o.password : nil, cwd: parent, onStart: onStart, progress: progress, onFile: onFile)
         default:
             let flag = ["tar.gz": "-czf", "tar.bz2": "-cjf", "tar.xz": "-cJf", "tar": "-cf"][o.format.rawValue]!
             let ex = o.excludeSystem ? ["--exclude", ".DS_Store", "--exclude", "._*", "--exclude", "__MACOSX"] : []
