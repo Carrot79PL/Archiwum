@@ -174,11 +174,11 @@ enum Engine {
     }
 
     /// Wynik prosto do pamięci (bez zapisu na dysk): dane z stdout ostatniego procesu.
-    static func runData(_ first: [String]?, _ args: [String], password: String?) async -> (data: Data, status: Int32, err: String) {
+    static func runData(_ first: [String]?, _ args: [String], password: String?, exe: URL? = nil) async -> (data: Data, status: Int32, err: String) {
         await withCheckedContinuation { cont in
             DispatchQueue.global().async {
                 let p1 = RawProcess(), p2 = RawProcess(); let mid = Pipe(), outp = Pipe(), errp = Pipe()
-                p2.executableURL = sevenZip
+                p2.executableURL = exe ?? sevenZip
                 p2.arguments = password.map { pw in args.map { $0 == "-p" ? "-p" + pw : $0 } } ?? args
                 p2.standardOutput = outp; p2.standardError = errp; p2.standardInput = FileHandle.nullDevice
                 if let first {
@@ -199,6 +199,21 @@ enum Engine {
                 cont.resume(returning: (data, p2.terminationStatus, eb.text))
             }
         }
+    }
+
+    /// Zewnętrzny `unrar` (jeśli zainstalowany) — zapasowy silnik dla RAR-ów, których 7-Zip nie potrafi rozpakować („Unsupported Method”).
+    static var unrar: URL? {
+        let b = Bundle.main.url(forResource: "unrar", withExtension: nil)
+        return ([b?.path, "/opt/homebrew/bin/unrar", "/usr/local/bin/unrar", "/usr/bin/unrar"].compactMap { $0 }).first { FileManager.default.isExecutableFile(atPath: $0) }.map { URL(fileURLWithPath: $0) }
+    }
+    static func unrarOverwrite(_ o: String) -> String { o == "-aoa" ? "-o+" : o == "-aos" ? "-o-" : "-or" }
+    static func unrarPatterns(_ sel: [String], isDir: (String) -> Bool) -> [String] { sel.map { isDir($0) ? $0 + "/*" : $0 } }
+
+    static func runUnrar(_ exe: URL, archive: URL, dest: URL, patterns: [String], password: String?, overwriteFlag: String,
+                         onStart: (@Sendable (RawProcess) -> Void)?, progress: (@Sendable (Double) -> Void)?) async -> RunResult {
+        try? FileManager.default.createDirectory(at: dest, withIntermediateDirectories: true)
+        let a = ["x", "-y", "-idc", unrarOverwrite(overwriteFlag), "-r", password.map { "-p" + $0 } ?? "-p-", archive.path] + patterns + [dest.path + "/"]
+        return await run(exe, a, onStart: onStart, progress: progress)
     }
 
     static func needsPassword(_ out: String) -> Bool {

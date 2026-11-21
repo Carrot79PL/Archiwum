@@ -388,9 +388,12 @@ struct PreviewItem: Identifiable { let id = UUID(); var name: String; var data: 
         if let e = entries.first(where: { $0.path == id }), e.size > 256 << 20 { notice = "Plik jest za duży na podgląd w pamięci (>256 MB). Użyj „Wypakuj do…”."; return }
         busy = "Wczytywanie…"
         var args = ["x", "-so", "-spd"]; if password != nil { args.append("-p") }
-        let r: (data: Data, status: Int32, err: String)
+        var r: (data: Data, status: Int32, err: String)
         if wrapped { r = await Engine.runData(["x", "-so", "-spd", u.path], ["x", "-si", "-ttar", "-so", "-spd", id], password: nil) }
         else { r = await Engine.runData(nil, args + [u.path, id], password: password) }
+        if r.status != 0, r.err.contains("Unsupported"), info.type.lowercased().hasPrefix("rar"), let un = Engine.unrar {
+            r = await Engine.runData(nil, ["p", "-inul", password.map { "-p" + $0 } ?? "-p-", u.path, id], password: nil, exe: un)
+        }
         busy = nil
         if r.status == 0 { previewItem = PreviewItem(name: (id as NSString).lastPathComponent, data: r.data) }
         else if Engine.needsPassword(r.err) { password = nil; pending = .preview(id); passwordError = true }
@@ -446,7 +449,7 @@ struct PreviewItem: Identifiable { let id = UUID(); var name: String; var data: 
             let need = statFiles.reduce(Int64(0)) { $0 + $1.size }
             if free < need { busy = nil; progress = nil; job = .none; notice = "Za mało miejsca w miejscu docelowym: potrzeba \(fmt(need)), wolne \(fmt(free))."; return }
         }
-        let res: RunResult
+        var res: RunResult
         if wrapped, case .extract(let d, let sel) = a {
             res = await Engine.runPipe(["x", "-so", "-spd", u.path],
                                        ["x", "-si", "-ttar", "-y", overwrite.flag, "-spd", "-o" + d.path] + sel,
@@ -455,6 +458,17 @@ struct PreviewItem: Identifiable { let id = UUID(); var name: String; var data: 
             res = await Engine.run(Engine.sevenZip, args, password: password,
                                    onStart: { p in Task { @MainActor in Store.shared.proc = p } },
                                    progress: { v in Task { @MainActor in Store.shared.progress = v } })
+        }
+        // Zapasowy silnik dla RAR-ów, których 7-Zip nie rozpakuje (np. „Unsupported Method”)
+        var unrarHint = false
+        if res.status != 0, res.out.contains("Unsupported"), info.type.lowercased().hasPrefix("rar"), case .extract(let d, let sl) = a {
+            if let un = Engine.unrar {
+                busy = "Wypakowywanie (unrar)…"; progress = 0
+                let pats = Engine.unrarPatterns(sl) { id in entries.contains { $0.path.hasPrefix(id + "/") } }
+                res = await Engine.runUnrar(un, archive: u, dest: d, patterns: pats, password: password, overwriteFlag: overwrite.flag,
+                                            onStart: { p in Task { @MainActor in Store.shared.proc = p } },
+                                            progress: { v in Task { @MainActor in Store.shared.progress = v } })
+            } else { unrarHint = true }
         }
         busy = nil; progress = nil; proc = nil; job = .none
         if res.status == 0 {
@@ -480,6 +494,7 @@ struct PreviewItem: Identifiable { let id = UUID(); var name: String; var data: 
         else {
             let errs = res.out.split(whereSeparator: { $0 == "\n" || $0 == "\r" }).filter { $0.contains("ERROR") || $0.contains("Error") || $0.contains("Can't") || $0.contains("Missing") || $0.contains("Unsupported") || $0.contains("Cannot") }
             notice = "Błąd wypakowywania (kod \(res.status)):\n" + (errs.isEmpty ? String(res.out.suffix(500)) : errs.prefix(6).joined(separator: "\n"))
+            if unrarHint { notice! += "\n\nTo archiwum używa metody, której 7-Zip nie obsługuje. Zainstaluj „unrar” (np. brew install unrar) — Archiwum użyje go wtedy automatycznie." }
         }
     }
 

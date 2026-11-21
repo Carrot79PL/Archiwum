@@ -150,6 +150,7 @@ Bez Migawki wszystko działa tak samo — zdjęcia i filmy otwierają się wtedy
 - **Hasło jest przekazywane do silnika 7-Zip jako argument procesu** (`-p…`) — w trakcie operacji widzą je procesy tego samego użytkownika (np. `ps`). 7-Zip nie pozwala w tym trybie na inną drogę.
 - **Dysk RAM wymaga wyłączenia App Sandbox** — aplikacja ma więc dostęp do plików jak zwykły program; zabezpieczenia to hardened runtime, brak sieci i ograniczenia opisane wyżej.
 - Zerowanie pamięci przed odmontowaniem nie gwarantuje braku śladów w **pliku wymiany (swap)** — macOS domyślnie go szyfruje, ale to nie jest absolutna gwarancja. Zewnętrzne aplikacje, w których otwierasz pliki, mogą zapisać własne ślady.
+- Niektóre RAR-y (np. z metodami spoza obsługi 7-Zip, błąd „Unsupported Method”) Archiwum rozpakowuje zapasowo przez zewnętrzny `unrar`, jeśli jest zainstalowany (`brew install unrar`) — wykrywa go samo.
 - Aplikacja **nie jest notaryzowana** (ad-hoc podpis), działa na Apple Silicon i macOS 26+.
 - Tryb jasny, wiele okien i wersja angielska nie są jeszcze dostępne.
 - Migawka rozpakowuje całe archiwum (nie pojedyncze pliki) i prosi o hasło osobno.

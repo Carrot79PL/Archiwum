@@ -8,8 +8,8 @@ import CryptoKit
 // MARK: Silnik: wypakowanie blokujące (przeciąganie do Findera) i SHA
 
 extension Engine {
-    static func runSync(_ a: [String], pipeFrom first: [String]? = nil) -> Int32 {
-        let p2 = RawProcess(); p2.executableURL = sevenZip; p2.arguments = a
+    static func runSync(_ a: [String], pipeFrom first: [String]? = nil, exe: URL? = nil) -> Int32 {
+        let p2 = RawProcess(); p2.executableURL = exe ?? sevenZip; p2.arguments = a
         p2.standardOutput = FileHandle.nullDevice; p2.standardError = FileHandle.nullDevice
         var p1: RawProcess?
         if let first {
@@ -36,6 +36,10 @@ extension Engine {
         let rc: Int32
         if wrapped { rc = runSync(["x", "-si", "-ttar", "-y", "-aoa", "-spd", "-o" + d.path, id], pipeFrom: ["x", "-so", "-spd", archive.path]) }
         else { rc = runSync(args + [archive.path, id]) }
+        if rc != 0, !wrapped, ["rar", "cbr"].contains(archive.pathExtension.lowercased()), let un = unrar {
+            let rc2 = runSync(["x", "-y", "-idq", "-o+", "-r", password.map { "-p" + $0 } ?? "-p-", archive.path, id, id + "/*", d.path + "/"], exe: un)
+            return rc2 == 0 ? d.appendingPathComponent(id) : nil
+        }
         return rc == 0 ? d.appendingPathComponent(id) : nil
     }
 

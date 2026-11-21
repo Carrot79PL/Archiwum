@@ -118,7 +118,8 @@ import AppKit
     // Opcjonalnie: własne archiwum (ARCHIWUM_TEST_ARCHIVE=/ścieżka) — otwarcie, wypakowanie dwóch plików i przeciągnięcie
     if let path = ProcessInfo.processInfo.environment["ARCHIWUM_TEST_ARCHIVE"] {
         await s.open(URL(fileURLWithPath: path))
-        let files = s.entries.filter { !$0.isDir }.prefix(2).map(\.path)
+        let match = ProcessInfo.processInfo.environment["ARCHIWUM_TEST_MATCH"]
+        let files = s.entries.filter { !$0.isDir && (match == nil || $0.path.contains(match!)) }.prefix(2).map(\.path)
         print("archiwum użytkownika:", s.entries.count, "wpisów, typ", s.info.type, ", zaszyfrowane:", s.entries.contains { $0.encrypted }, ", prosi o hasło:", s.pendingOpen != nil)
         let dx = dir.appendingPathComponent("user-out")
         await s.perform(.extract(dx, Array(files)))
