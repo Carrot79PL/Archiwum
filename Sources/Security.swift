@@ -129,8 +129,11 @@ final class ServicesProvider: NSObject {
 enum Signer {
     struct Sig: Codable { var version = 1; var sha256: String; var publicKey: String; var signature: String; var signedAt: String; var file: String }
     static let service = "pl.local.archiwum.sign"
+    /// Tests use an in-memory key so they never touch the user's Keychain.
+    nonisolated(unsafe) static var ephemeral: Curve25519.Signing.PrivateKey?
 
     static func privateKey() -> Curve25519.Signing.PrivateKey {
+        if let e = ephemeral { return e }
         let q: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: "ed25519",
                                 kSecReturnData as String: true, kSecMatchLimit as String: kSecMatchLimitOne]
         var out: CFTypeRef?
@@ -143,6 +146,7 @@ enum Signer {
     }
     /// Reads the signing key only if it already exists (verification must never create one or prompt needlessly).
     static func existingKey() -> Curve25519.Signing.PrivateKey? {
+        if let e = ephemeral { return e }
         let q: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: "ed25519",
                                 kSecReturnData as String: true, kSecMatchLimit as String: kSecMatchLimitOne]
         var out: CFTypeRef?

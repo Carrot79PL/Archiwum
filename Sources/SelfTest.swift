@@ -1,9 +1,11 @@
 import Foundation
 import AppKit
+import CryptoKit
 
 /// Headless integration test: `Archiwum.app/Contents/MacOS/Archiwum --selftest <dir>`
 @MainActor func runSelfTest(_ dir: URL) async {
     var fails = 0
+    Signer.ephemeral = Curve25519.Signing.PrivateKey()
     func check(_ name: String, _ ok: Bool, _ extra: String = "") { print(ok ? "PASS" : "FAIL", name, extra); if !ok { fails += 1 } }
     let fm = FileManager.default
     try? fm.removeItem(at: dir); try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
