@@ -9,11 +9,11 @@ import CryptoKit
 
 extension Engine {
     static func runSync(_ a: [String], pipeFrom first: [String]? = nil) -> Int32 {
-        let p2 = Process(); p2.executableURL = sevenZip; p2.arguments = a
+        let p2 = RawProcess(); p2.executableURL = sevenZip; p2.arguments = a
         p2.standardOutput = FileHandle.nullDevice; p2.standardError = FileHandle.nullDevice
-        var p1: Process?
+        var p1: RawProcess?
         if let first {
-            let pr = Process(); pr.executableURL = sevenZip; pr.arguments = first
+            let pr = RawProcess(); pr.executableURL = sevenZip; pr.arguments = first
             let mid = Pipe(); pr.standardOutput = mid; pr.standardError = FileHandle.nullDevice; pr.standardInput = FileHandle.nullDevice
             p2.standardInput = mid
             guard (try? pr.run()) != nil else { return -1 }

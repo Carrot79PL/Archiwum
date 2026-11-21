@@ -84,7 +84,7 @@ i używa sprawdzonego silnika **7-Zip** — więc potrafi tyle, co 7-Zip, ale je
 
 ## Instalacja
 
-1. Pobierz **`Archiwum-1.0.dmg`** z zakładki [Releases](../../releases) i przeciągnij **Archiwum** do **Programów** (lub `~/Applications`).
+1. Pobierz **`Archiwum-1.0.1.dmg`** z zakładki [Releases](../../releases) i przeciągnij **Archiwum** do **Programów** (lub `~/Applications`).
 2. Aplikacja nie jest notaryzowana. Przy pierwszym uruchomieniu kliknij ją **prawym przyciskiem → Otwórz**, albo wykonaj:
    ```bash
    xattr -dr com.apple.quarantine /Applications/Archiwum.app

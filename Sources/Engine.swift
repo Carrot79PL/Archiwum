@@ -47,10 +47,10 @@ enum Engine {
     }
 
     static func run(_ exe: URL, _ args: [String], password: String? = nil, cwd: URL? = nil,
-                    onStart: (@Sendable (Process) -> Void)? = nil,
+                    onStart: (@Sendable (RawProcess) -> Void)? = nil,
                     progress: (@Sendable (Double) -> Void)? = nil) async -> RunResult {
         await withCheckedContinuation { cont in
-            let p = Process()
+            let p = RawProcess()
             p.executableURL = exe
             let args = args.contains("-bsp1") && !args.contains("-bb1") ? [args[0], "-bb1"] + args.dropFirst() : args
             p.arguments = password.map { pw in args.map { $0 == "-p" ? "-p" + pw : $0 } } ?? args
@@ -129,7 +129,7 @@ enum Engine {
     }
 
     /// Dodaje pliki do istniejącego archiwum (7z/zip).
-    static func add(to archive: URL, files: [URL], password: String?, onStart: (@Sendable (Process) -> Void)?, progress: (@Sendable (Double) -> Void)?) async -> RunResult {
+    static func add(to archive: URL, files: [URL], password: String?, onStart: (@Sendable (RawProcess) -> Void)?, progress: (@Sendable (Double) -> Void)?) async -> RunResult {
         let parent = files[0].deletingLastPathComponent()
         let same = files.allSatisfy { $0.deletingLastPathComponent() == parent }
         var a = ["a", "-bsp1", "-spd"]; if password != nil { a.append("-p") }
@@ -150,9 +150,9 @@ enum Engine {
         return parse(r.out, name: "")
     }
 
-    static func runPipe(_ a1: [String], _ a2: [String], onStart: (@Sendable (Process) -> Void)? = nil) async -> RunResult {
+    static func runPipe(_ a1: [String], _ a2: [String], onStart: (@Sendable (RawProcess) -> Void)? = nil) async -> RunResult {
         await withCheckedContinuation { cont in
-            let p1 = Process(), p2 = Process(); let mid = Pipe(), outp = Pipe()
+            let p1 = RawProcess(), p2 = RawProcess(); let mid = Pipe(), outp = Pipe()
             p1.executableURL = sevenZip; p1.arguments = a1
             p1.standardInput = FileHandle.nullDevice; p1.standardOutput = mid; p1.standardError = FileHandle.nullDevice
             p2.executableURL = sevenZip; p2.arguments = a2
@@ -177,7 +177,7 @@ enum Engine {
     static func runData(_ first: [String]?, _ args: [String], password: String?) async -> (data: Data, status: Int32, err: String) {
         await withCheckedContinuation { cont in
             DispatchQueue.global().async {
-                let p1 = Process(), p2 = Process(); let mid = Pipe(), outp = Pipe(), errp = Pipe()
+                let p1 = RawProcess(), p2 = RawProcess(); let mid = Pipe(), outp = Pipe(), errp = Pipe()
                 p2.executableURL = sevenZip
                 p2.arguments = password.map { pw in args.map { $0 == "-p" ? "-p" + pw : $0 } } ?? args
                 p2.standardOutput = outp; p2.standardError = errp; p2.standardInput = FileHandle.nullDevice
@@ -258,7 +258,7 @@ enum Method: String, CaseIterable, Identifiable {
 
 extension Engine {
     static func create(_ o: CreateOptions, output: URL,
-                       onStart: (@Sendable (Process) -> Void)?, progress: (@Sendable (Double) -> Void)?) async -> RunResult {
+                       onStart: (@Sendable (RawProcess) -> Void)?, progress: (@Sendable (Double) -> Void)?) async -> RunResult {
         try? FileManager.default.removeItem(at: output)
         let parent = o.files[0].deletingLastPathComponent()
         let same = o.files.allSatisfy { $0.deletingLastPathComponent() == parent }
@@ -296,7 +296,7 @@ extension Engine {
     static func compressedSize(_ args: [String], input: Data) async -> Int64? {
         await withCheckedContinuation { cont in
             DispatchQueue.global().async {
-                let p = Process(); p.executableURL = sevenZip; p.arguments = args
+                let p = RawProcess(); p.executableURL = sevenZip; p.arguments = args
                 let inp = Pipe(), outp = Pipe()
                 p.standardInput = inp; p.standardOutput = outp; p.standardError = FileHandle.nullDevice
                 do { try p.run() } catch { cont.resume(returning: nil); return }

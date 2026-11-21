@@ -70,6 +70,30 @@ import AppKit
     await s.perform(.extract(dest, []))
     check("wypakowanie całości", fm.fileExists(atPath: dest.appendingPathComponent("src/big.txt").path))
     check("kwarantanna odziedziczona", Security.quarantine(of: dest.appendingPathComponent("src/big.txt")) != nil)
+    let d2 = dir.appendingPathComponent("out2")
+    await s.perform(.extract(d2, ["src/docs"]))
+    check("wypakowanie wybranego folderu", fm.fileExists(atPath: d2.appendingPathComponent("src/docs/a.txt").path) && fm.fileExists(atPath: d2.appendingPathComponent("src/docs/deep/copy.txt").path), s.notice ?? "")
+    let rowsDocs = s.rows; _ = rowsDocs
+    let dd = Engine.extractBlocking(archive: archive, wrapped: false, password: nil, id: "src/docs", size: 100)
+    check("przeciąganie folderu (RAM)", dd != nil && fm.fileExists(atPath: dd!.appendingPathComponent("a.txt").path), dd?.path ?? "nil")
+    // Polskie znaki: nazwy NFC i hasło z „ą/ę/ł” (Foundation.Process normalizuje argumenty do NFD)
+    do {
+        let nfc = "Zdjęcia-Łódź".precomposedStringWithCanonicalMapping, pw = "Zażółć123!".precomposedStringWithCanonicalMapping
+        let uni = dir.appendingPathComponent("uni")
+        mkdir(uni.path, 0o755); mkdir(uni.path + "/" + nfc, 0o755)
+        let fd = open(uni.path + "/" + nfc + "/plik.txt", O_CREAT | O_WRONLY, 0o644); _ = write(fd, "tresc", 5); close(fd)
+        let mk = RawProcess(); mk.executableURL = Engine.sevenZip; mk.arguments = ["a", "-spd", "-p" + pw, dir.appendingPathComponent("uni.7z").path, nfc]; mk.currentDirectoryURL = uni
+        mk.standardOutput = FileHandle.nullDevice; mk.standardError = FileHandle.nullDevice; mk.standardInput = FileHandle.nullDevice
+        try? mk.run(); mk.waitUntilExit()
+        await s.open(dir.appendingPathComponent("uni.7z"), password: pw)
+        check("hasło z polskimi znakami", !s.entries.isEmpty, "\(s.entries.count) wpisów")
+        let d4 = dir.appendingPathComponent("out4")
+        await s.perform(.extract(d4, [nfc]))
+        check("wypakowanie folderu z polskimi znakami", fm.fileExists(atPath: d4.appendingPathComponent(nfc + "/plik.txt").path), s.notice ?? "")
+        let dd2 = Engine.extractBlocking(archive: dir.appendingPathComponent("uni.7z"), wrapped: false, password: pw, id: nfc, size: 10)
+        check("przeciąganie folderu z polskimi znakami", dd2 != nil && fm.fileExists(atPath: dd2!.appendingPathComponent("plik.txt").path))
+        await s.open(archive)
+    }
     // 8. Porównanie z folderem, SHA, batch
     await s.compare(with: dest); check("porównanie z folderem", (s.diff?.same ?? 0) >= 4 && s.diff?.changed.isEmpty == true, s.diff.map { "same \($0.same) removed \($0.removed.count) added \($0.added.count)" } ?? "")
     let h = Engine.sha256(of: archive); let ref = RamDisk.sh("/usr/bin/shasum", ["-a", "256", archive.path]).1.split(separator: " ").first.map(String.init)

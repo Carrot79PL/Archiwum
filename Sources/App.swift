@@ -108,7 +108,7 @@ struct PreviewItem: Identifiable { let id = UUID(); var name: String; var data: 
     @Published var showCreate = false
     @Published var createOpts = CreateOptions()
     @Published var createConfirm = ""
-    var proc: Process?
+    var proc: RawProcess?
     private init() { Engine.onFile = { f in Task { @MainActor in Store.shared.currentFile = f } } }
 
     func finish(_ r: JobResult) {
