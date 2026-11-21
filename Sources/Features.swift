@@ -244,21 +244,24 @@ extension Store {
         return img
     }
 
-    // Przeciąganie z archiwum
-    func dragProvider(_ r: Row) -> NSItemProvider {
-        let p = NSItemProvider()
-        p.suggestedName = r.name
-        guard let u = url else { return p }
-        let pw = password, wr = wrapped, id = r.id, size = r.size
-        let type = r.isDir ? UTType.folder : (UTType(filenameExtension: r.ext) ?? .data)
-        p.registerFileRepresentation(forTypeIdentifier: type.identifier, fileOptions: [], visibility: .all) { completion in
-            DispatchQueue.global().async {
-                let out = Engine.extractBlocking(archive: u, wrapped: wr, password: pw, id: id, size: size)
-                completion(out, false, out == nil ? NSError(domain: "Archiwum", code: 1) : nil)
-            }
-            return nil
+    /// Pozycje do przeciągnięcia (wiele naraz) — pliki i foldery wypakowywane na dysk RAM dopiero przy upuszczeniu.
+    func dragFiles(_ ids: [String]) -> [DragFile] {
+        guard let u = url else { return [] }
+        func size(_ id: String) -> Int64 { entries.filter { !$0.isDir && ($0.path == id || $0.path.hasPrefix(id + "/")) }.reduce(0) { $0 + $1.size } }
+        let total = ids.reduce(Int64(0)) { $0 + size($1) }
+        return ids.map { DragFile(id: $0, name: ($0 as NSString).lastPathComponent, archive: u, wrapped: wrapped, password: password, size: total) }
+    }
+}
+
+struct DragFile: Transferable, Identifiable, Sendable {
+    var id: String; var name: String; var archive: URL; var wrapped: Bool; var password: String?; var size: Int64
+    static var transferRepresentation: some TransferRepresentation {
+        FileRepresentation(exportedContentType: .item) { f in
+            let url = await Task.detached { Engine.extractBlocking(archive: f.archive, wrapped: f.wrapped, password: f.password, id: f.id, size: f.size) }.value
+            guard let url else { throw CocoaError(.fileReadUnknown) }
+            return SentTransferredFile(url, allowAccessingOriginalFile: false)
         }
-        return p
+        .suggestedFileName { $0.name }
     }
 }
 
@@ -286,9 +289,11 @@ struct ThumbGrid: View {
                     .onTapGesture(count: 2) { onOpen(r) }
                     .onTapGesture { onTap(r) }
                     .task { _ = await s.thumb(r) }
-                    .onDrag { s.dragProvider(r) }
+                    .draggable(containerItemID: r.id)
                 }
             }.padding(.horizontal, 20).padding(.vertical, 8)
+            .dragContainerSelection(Array(sel))
+            .dragContainer(for: DragFile.self) { ids in MainActor.assumeIsolated { Store.shared.dragFiles(ids) } }
         }
     }
 }

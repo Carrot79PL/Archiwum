@@ -373,7 +373,7 @@ struct ContentView: View {
                             ForEach(rows) { r in
                                 RowView(r: r, selected: sel.contains(r.id), toggle: { if sel.contains(r.id) { sel.remove(r.id) } else { sel.insert(r.id) }; anchor = r.id })
                                     .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.96, anchor: .top)).combined(with: .offset(y: -6)), removal: .opacity))
-                                    .onDrag { s.dragProvider(r) }
+                                    .draggable(containerItemID: r.id)
                                     .onTapGesture(count: 2) { activate(r) }
                                     .onTapGesture { click(r, rows: rows) }
                                     .contextMenu {
@@ -389,6 +389,8 @@ struct ContentView: View {
                             }
                         }.padding(.horizontal, 20).padding(.vertical, 6)
                         .animation(.snappy(duration: 0.28), value: rows.map(\.id))
+                        .dragContainerSelection(Array(sel))
+                        .dragContainer(for: DragFile.self) { ids in MainActor.assumeIsolated { Store.shared.dragFiles(ids) } }
                     }
                     .focusable().focused($listFocus).focusEffectDisabled()
                     .onKeyPress(.upArrow) { move(-1, rows); return .handled }

@@ -94,6 +94,8 @@ import AppKit
         check("przeciąganie folderu z polskimi znakami", dd2 != nil && fm.fileExists(atPath: dd2!.appendingPathComponent("plik.txt").path))
         await s.open(archive)
     }
+    let multi = s.dragFiles(["src/docs/a.txt", "src/big.txt"]); check("dragFiles (wiele)", multi.count == 2 && multi[0].size > 0)
+    for f in multi { let r = Engine.extractBlocking(archive: f.archive, wrapped: f.wrapped, password: f.password, id: f.id, size: f.size); check("przeciągnięcie \(f.name)", r != nil && fm.fileExists(atPath: r!.path)) }
     // 8. Porównanie z folderem, SHA, batch
     await s.compare(with: dest); check("porównanie z folderem", (s.diff?.same ?? 0) >= 4 && s.diff?.changed.isEmpty == true, s.diff.map { "same \($0.same) removed \($0.removed.count) added \($0.added.count)" } ?? "")
     let h = Engine.sha256(of: archive); let ref = RamDisk.sh("/usr/bin/shasum", ["-a", "256", archive.path]).1.split(separator: " ").first.map(String.init)
@@ -113,6 +115,17 @@ import AppKit
     }
     // 9. Estymacja
     let est = await Engine.estimate(files: [src]); check("estymacja", est.count == 4, est.map { "\($0.label):\($0.bytes)" }.joined(separator: " "))
+    // Opcjonalnie: własne archiwum (ARCHIWUM_TEST_ARCHIVE=/ścieżka) — otwarcie, wypakowanie dwóch plików i przeciągnięcie
+    if let path = ProcessInfo.processInfo.environment["ARCHIWUM_TEST_ARCHIVE"] {
+        await s.open(URL(fileURLWithPath: path))
+        let files = s.entries.filter { !$0.isDir }.prefix(2).map(\.path)
+        print("archiwum użytkownika:", s.entries.count, "wpisów, typ", s.info.type, ", zaszyfrowane:", s.entries.contains { $0.encrypted }, ", prosi o hasło:", s.pendingOpen != nil)
+        let dx = dir.appendingPathComponent("user-out")
+        await s.perform(.extract(dx, Array(files)))
+        check("własne archiwum: wypakowanie 2 plików", files.allSatisfy { fm.fileExists(atPath: dx.appendingPathComponent($0).path) }, "pending=\(s.pending != nil) notice=\(s.notice ?? "-")")
+        let df = s.dragFiles(Array(files)); check("własne archiwum: dragFiles", df.count == files.count)
+        for f in df { let r = Engine.extractBlocking(archive: f.archive, wrapped: f.wrapped, password: f.password, id: f.id, size: f.size); check("własne archiwum: przeciągnięcie \(f.name.prefix(12))…", r != nil && fm.fileExists(atPath: r!.path)) }
+    }
     print(fails == 0 ? "WSZYSTKIE TESTY OK" : "BŁĘDY: \(fails)")
     RamDisk.eject()
     exit(fails == 0 ? 0 : 1)

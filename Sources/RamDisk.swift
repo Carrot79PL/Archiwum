@@ -6,6 +6,7 @@ enum RamDisk {
     nonisolated(unsafe) static var mount: URL?
     nonisolated(unsafe) static var capacity: Int64 = 0
     nonisolated(unsafe) static var lastError = ""
+    static let lock = NSRecursiveLock()
 
     @discardableResult
     static func sh(_ exe: String, _ args: [String]) -> (Int32, String) {
@@ -18,6 +19,7 @@ enum RamDisk {
     }
 
     static func ensure(bytes: Int64) -> URL? {
+        lock.lock(); defer { lock.unlock() }
         let need = max(64 << 20, bytes * 12 / 10 + (16 << 20))
         if let m = mount, capacity >= need { return m }
         eject()
@@ -51,6 +53,7 @@ enum RamDisk {
     }
 
     static func eject() {
+        lock.lock(); defer { lock.unlock() }
         if let m = mount { wipeContents(m) }
         if let m = mount { sh("/sbin/umount", ["-f", m.path]); try? FileManager.default.removeItem(at: m) }
         if let d = dev { sh("/usr/bin/hdiutil", ["detach", d, "-force"]) }

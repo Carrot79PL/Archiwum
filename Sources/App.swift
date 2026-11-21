@@ -118,6 +118,11 @@ struct PreviewItem: Identifiable { let id = UUID(); var name: String; var data: 
         let id = r.id
         Task { try? await Task.sleep(for: .seconds(9)); if Store.shared.result?.id == id { Store.shared.result = nil } }
     }
+    /// Czy wybrane elementy (albo całe archiwum, gdy `sel` puste) zawierają zaszyfrowane pliki — tylko wtedy pytamy o hasło.
+    func needsPassword(for sel: [String]) -> Bool {
+        if headerLocked { return true }
+        return entries.contains { e in e.encrypted && (sel.isEmpty || sel.contains { e.path == $0 || e.path.hasPrefix($0 + "/") }) }
+    }
     func filesUnder(_ sel: [String]) -> [Entry] {
         entries.filter { e in !e.isDir && (sel.isEmpty || sel.contains { e.path == $0 || e.path.hasPrefix($0 + "/") }) }
     }
@@ -367,7 +372,7 @@ struct PreviewItem: Identifiable { let id = UUID(); var name: String; var data: 
     func preview(_ id: String) async {
         guard let u = url else { return }
         lastUse = Date()
-        if entries.contains(where: { $0.encrypted }) && password == nil {
+        if needsPassword(for: [id]) && password == nil {
             if KeychainPW.exists(u.path), await Biometric.authenticate("Odblokuj archiwum"), let saved = KeychainPW.load(u.path) { password = saved }
             else { pending = .preview(id); passwordError = false; return }
         }
@@ -415,7 +420,9 @@ struct PreviewItem: Identifiable { let id = UUID(); var name: String; var data: 
         }
         guard let u = url else { return }
         lastUse = Date()
-        if entries.contains(where: { $0.encrypted }) && password == nil {
+        let selForCheck: [String]
+        switch orig { case .extract(_, let sl): selForCheck = sl; case .open(let ids): selForCheck = ids; default: selForCheck = [] }
+        if needsPassword(for: selForCheck) && password == nil {
             if KeychainPW.exists(u.path), await Biometric.authenticate("Odblokuj archiwum"), let saved = KeychainPW.load(u.path) { password = saved }
             else { pending = orig; passwordError = false; return }
         }
@@ -467,10 +474,13 @@ struct PreviewItem: Identifiable { let id = UUID(); var name: String; var data: 
                 finish(JobResult(icon: "checkmark.shield.fill", title: "Archiwum jest poprawne", detail: "Wszystkie sumy kontrolne zgadzają się",
                                  lines: [("Plików", "\(all.count)"), ("Rozmiar", fmt(all.reduce(Int64(0)) { $0 + $1.size })), ("Czas", elapsed)]))
             }
-        } else if Engine.needsPassword(res.out) {
+        } else if Engine.needsPassword(res.out) && (needsPassword(for: selForCheck) || password != nil) {
             password = nil; pending = orig; passwordError = true
         } else if res.status == 255 { notice = "Anulowano." }
-        else { notice = "Błąd:\n" + String(res.out.suffix(400)) }
+        else {
+            let errs = res.out.split(whereSeparator: { $0 == "\n" || $0 == "\r" }).filter { $0.contains("ERROR") || $0.contains("Error") || $0.contains("Can't") || $0.contains("Missing") || $0.contains("Unsupported") || $0.contains("Cannot") }
+            notice = "Błąd wypakowywania (kod \(res.status)):\n" + (errs.isEmpty ? String(res.out.suffix(500)) : errs.prefix(6).joined(separator: "\n"))
+        }
     }
 
     func startLockTimer() {

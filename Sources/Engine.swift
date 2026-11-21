@@ -203,7 +203,8 @@ enum Engine {
 
     static func needsPassword(_ out: String) -> Bool {
         let o = out.lowercased()
-        return o.contains("wrong password") || o.contains("enter password") || o.contains("encrypted")
+        return o.contains("wrong password") || o.contains("enter password") || o.contains("cannot open encrypted archive")
+            || o.contains("data error in encrypted file") || o.contains("crc failed in encrypted file")
     }
 }
 
