@@ -56,23 +56,27 @@ enum Security {
 enum KeychainPW {
     static func account(_ path: String) -> String { SHA256.hash(data: Data(path.utf8)).map { String(format: "%02x", $0) }.joined() }
     static func q(_ path: String) -> [String: Any] { [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: "pl.local.archiwum", kSecAttrAccount as String: account(path)] }
+    static let marksKey = "kpAccounts"
+    static func marked(_ path: String) -> Bool { (UserDefaults.standard.stringArray(forKey: marksKey) ?? []).contains(account(path)) }
+    static func mark(_ path: String, _ on: Bool) {
+        var l = Set(UserDefaults.standard.stringArray(forKey: marksKey) ?? [])
+        if on { l.insert(account(path)) } else { l.remove(account(path)) }
+        UserDefaults.standard.set(Array(l), forKey: marksKey)
+    }
     static func save(_ path: String, _ pw: String) {
         var query = q(path); SecItemDelete(query as CFDictionary)
         query[kSecValueData as String] = Data(pw.utf8)
-        SecItemAdd(query as CFDictionary, nil)
+        if SecItemAdd(query as CFDictionary, nil) == errSecSuccess { mark(path, true) }
     }
-    static func exists(_ path: String) -> Bool {
-        var query = q(path); query[kSecReturnData as String] = false
-        let ctx = LAContext(); ctx.interactionNotAllowed = true; query[kSecUseAuthenticationContext as String] = ctx
-        return SecItemCopyMatching(query as CFDictionary, nil) != errSecItemNotFound
-    }
+    /// Does not touch the Keychain at all unless the user previously chose to remember a password for this archive.
+    static func exists(_ path: String) -> Bool { marked(path) }
     static func load(_ path: String) -> String? {
         var query = q(path); query[kSecReturnData as String] = true; query[kSecMatchLimit as String] = kSecMatchLimitOne
         var out: CFTypeRef?
         guard SecItemCopyMatching(query as CFDictionary, &out) == errSecSuccess, let d = out as? Data else { return nil }
         return String(data: d, encoding: .utf8)
     }
-    static func delete(_ path: String) { SecItemDelete(q(path) as CFDictionary) }
+    static func delete(_ path: String) { SecItemDelete(q(path) as CFDictionary); mark(path, false) }
 }
 
 enum Biometric {
@@ -137,6 +141,14 @@ enum Signer {
         SecItemAdd(add as CFDictionary, nil)
         return k
     }
+    /// Reads the signing key only if it already exists (verification must never create one or prompt needlessly).
+    static func existingKey() -> Curve25519.Signing.PrivateKey? {
+        let q: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: "ed25519",
+                                kSecReturnData as String: true, kSecMatchLimit as String: kSecMatchLimitOne]
+        var out: CFTypeRef?
+        guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess, let d = out as? Data else { return nil }
+        return try? Curve25519.Signing.PrivateKey(rawRepresentation: d)
+    }
     static func fingerprint(_ pub: Data) -> String {
         SHA256.hash(data: pub).prefix(8).map { String(format: "%02x", $0) }.joined(separator: ":")
     }
@@ -163,6 +175,6 @@ enum Signer {
               let key = try? Curve25519.Signing.PublicKey(rawRepresentation: pub) else { return .unreadable }
         guard key.isValidSignature(sig, for: Data(rec.sha256.utf8)) else { return .badSignature }
         guard let h = Engine.sha256(of: archive), h == rec.sha256 else { return .changed }
-        return .ok(mine: pub == privateKey().publicKey.rawRepresentation, fp: fingerprint(pub), date: rec.signedAt)
+        return .ok(mine: existingKey().map { $0.publicKey.rawRepresentation == pub } ?? false, fp: fingerprint(pub), date: rec.signedAt)
     }
 }
