@@ -65,6 +65,7 @@ i używa sprawdzonego silnika **7-Zip** — więc potrafi tyle, co 7-Zip, ale je
 - **Dodawanie i usuwanie plików** w istniejących archiwach 7z/ZIP.
 - **Test integralności**, **ratowanie danych** z uszkodzonych archiwów, **konwersja** między formatami (przez dysk RAM).
 - **Wiele okien** — każde archiwum we własnym oknie; **przeciąganie plików z jednego archiwum do drugiego** (dodaj do archiwum albo utwórz nowe).
+- **Archiwum w archiwum** — dwuklik na zagnieżdżonym archiwum otwiera je w nowym oknie (wypakowane tylko na własny dysk RAM, który znika po zamknięciu okna).
 - **Wypakowywanie wsadowe** — upuść kilka archiwów naraz.
 - **Porównywanie** archiwum z innym archiwum lub folderem, **szukanie w treści plików**, eksport listy do CSV.
 - Sumy kontrolne **SHA-256** (plik `.sha256`) i **podpisy cyfrowe Ed25519** (`.sig`).

@@ -112,7 +112,26 @@ struct PreviewItem: Identifiable { let id = UUID(); var name: String; var data: 
     weak var window: NSWindow?
     @Published var dropChoice: DropChoice?
     init() { Registry.add(self); startLockTimer() }
+    var ownedMount: URL?
+    /// Archive inside an archive: extract it to its own RAM disk and open it in a new window (no Archive Utility, no disk).
+    func openNested(_ id: String) async {
+        guard let u = url else { return }
+        let size = entries.first(where: { $0.path == id })?.size ?? 0
+        busy = "Wypakowywanie archiwum do pamięci…"
+        let pw = password, wr = wrapped
+        let out: URL? = await Task.detached {
+            guard let d = RamDisk.ensureNested(bytes: size) else { return nil }
+            let r = Engine.extractInto(d, archive: u, wrapped: wr, password: pw, id: id)
+            if r == nil, let ok = RamDisk.extraMount(containing: d.appendingPathComponent("x")) { RamDisk.ejectExtra(ok) }
+            return r
+        }.value
+        busy = nil
+        if let out { Registry.openInNewWindow(out) } else { notice = "Nie udało się otworzyć zagnieżdżonego archiwum „\((id as NSString).lastPathComponent)”.\n" + RamDisk.lastError }
+    }
     func attach(_ w: NSWindow) {
+        NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: w, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { if let m = self?.ownedMount { RamDisk.ejectExtra(m); self?.ownedMount = nil } }
+        }
         window = w
         if w.isKeyWindow { Registry.active = self }
         NotificationCenter.default.addObserver(forName: NSWindow.didBecomeKeyNotification, object: w, queue: .main) { [weak self] _ in
@@ -294,6 +313,7 @@ struct PreviewItem: Identifiable { let id = UUID(); var name: String; var data: 
     func open(_ u: URL, password pw: String? = nil) async {
         busy = "Otwieranie…"; defer { busy = nil }
         var (list, ainfo, res) = await Engine.list(u, password: pw)
+        ownedMount = RamDisk.extraMount(containing: u) ?? ownedMount
         wrapped = false
         if list.count == 1, list[0].path.hasSuffix(".tar"), !u.lastPathComponent.hasSuffix(".tar") {
             let l2 = await Engine.listWrapped(u)
@@ -373,7 +393,7 @@ struct PreviewItem: Identifiable { let id = UUID(); var name: String; var data: 
         lastUse = Date()
         NSWorkspace.shared.open([u], withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration())
     }
-    nonisolated static func wipePreviews() { RamDisk.eject(); RamDisk.ejectStale() }
+    nonisolated static func wipePreviews() { RamDisk.ejectAll(); RamDisk.ejectStale() }
     func wipe() { RamDisk.eject() }
 
     /// Podgląd wyłącznie w pamięci — nic nie trafia na dysk.
@@ -414,6 +434,13 @@ struct PreviewItem: Identifiable { let id = UUID(); var name: String; var data: 
         if case .open(let ids) = orig {
             var files = ids.filter { id in !(entries.first(where: { $0.path == id })?.isDir ?? false) }
             guard !files.isEmpty else { return }
+            let nested = files.filter { Store.archiveExt.contains(($0 as NSString).pathExtension.lowercased()) }
+            if !nested.isEmpty {
+                if needsPassword(for: nested) && password == nil { pending = orig; passwordError = false; return }
+                for id in nested { await openNested(id) }
+                files.removeAll { nested.contains($0) }
+                if files.isEmpty { return }
+            }
             if migawka != nil {
                 let media = files.filter { Store.mediaExt.contains(($0 as NSString).pathExtension.lowercased()) }
                 if !media.isEmpty { openInMigawka(); files.removeAll { media.contains($0) } }

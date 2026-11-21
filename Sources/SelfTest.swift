@@ -105,6 +105,27 @@ import CryptoKit
     }
     let multi = s.dragFiles(["src/docs/a.txt", "src/big.txt"]); check("dragFiles (wiele)", multi.count == 2 && multi[0].size > 0)
     for f in multi { let r = Engine.extractBlocking(archive: f.archive, wrapped: f.wrapped, password: f.password, id: f.id, size: f.size); check("przeciągnięcie \(f.name)", r != nil && fm.fileExists(atPath: r!.path)) }
+    // Archiwum w archiwum: wypakowanie zagnieżdżonego archiwum na osobny dysk RAM i jego otwarcie
+    do {
+        let innerSrc = dir.appendingPathComponent("inner"); try? fm.createDirectory(at: innerSrc, withIntermediateDirectories: true)
+        try? "zagniezdzone".write(to: innerSrc.appendingPathComponent("w.txt"), atomically: true, encoding: .utf8)
+        let p1 = RawProcess(); p1.executableURL = Engine.sevenZip; p1.arguments = ["a", "-spd", dir.appendingPathComponent("inner.zip").path, "w.txt"]; p1.currentDirectoryURL = innerSrc
+        p1.standardOutput = FileHandle.nullDevice; p1.standardError = FileHandle.nullDevice; p1.standardInput = FileHandle.nullDevice; try? p1.run(); p1.waitUntilExit()
+        let p2 = RawProcess(); p2.executableURL = Engine.sevenZip; p2.arguments = ["a", "-spd", dir.appendingPathComponent("outer.7z").path, "inner.zip"]; p2.currentDirectoryURL = dir
+        p2.standardOutput = FileHandle.nullDevice; p2.standardError = FileHandle.nullDevice; p2.standardInput = FileHandle.nullDevice; try? p2.run(); p2.waitUntilExit()
+        await s.open(dir.appendingPathComponent("outer.7z"))
+        let before = Registry.pending.count
+        await s.perform(.open(["inner.zip"]))
+        check("zagnieżdżone archiwum: przekazane do nowego okna", Registry.pending.count == before + 1, Registry.pending.last?.path ?? "")
+        if let nu = Registry.pending.last {
+            let t = Store(); await t.open(nu)
+            check("zagnieżdżone archiwum: otwarte jako archiwum", t.entries.contains { $0.path == "w.txt" }, "\(t.entries.count) wpisów")
+            check("zagnieżdżone: osobny dysk RAM", t.ownedMount != nil)
+            if let m = t.ownedMount { RamDisk.ejectExtra(m) }
+        }
+        Registry.pending.removeAll()
+        await s.open(archive)
+    }
     // 8. Porównanie z folderem, SHA, batch
     await s.compare(with: dest); check("porównanie z folderem", (s.diff?.same ?? 0) >= 4 && s.diff?.changed.isEmpty == true, s.diff.map { "same \($0.same) removed \($0.removed.count) added \($0.added.count)" } ?? "")
     let h = Engine.sha256(of: archive); let ref = RamDisk.sh("/usr/bin/shasum", ["-a", "256", archive.path]).1.split(separator: " ").first.map(String.init)

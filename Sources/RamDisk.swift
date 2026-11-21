@@ -7,6 +7,7 @@ enum RamDisk {
     nonisolated(unsafe) static var capacity: Int64 = 0
     nonisolated(unsafe) static var lastError = ""
     static let lock = NSRecursiveLock()
+    nonisolated(unsafe) static var extras: [(dev: String, mount: URL)] = []
 
     @discardableResult
     static func sh(_ exe: String, _ args: [String]) -> (Int32, String) {
@@ -37,6 +38,27 @@ enum RamDisk {
         FileManager.default.createFile(atPath: mp.appendingPathComponent(".metadata_never_index").path, contents: Data())
         return mp
     }
+
+    /// A separate RAM disk that stays alive until its window closes (used for archives opened from inside other archives).
+    static func ensureNested(bytes: Int64) -> URL? {
+        lock.lock(); defer { lock.unlock() }
+        let saved = (dev, mount, capacity)
+        dev = nil; mount = nil; capacity = 0
+        let m = ensure(bytes: bytes)
+        let created = (dev, mount)
+        (dev, mount, capacity) = saved
+        guard let m, let d = created.0 else { return nil }
+        extras.append((d, m)); return m
+    }
+    static func extraMount(containing u: URL) -> URL? { extras.first { u.path.hasPrefix($0.mount.path + "/") }?.mount }
+    static func ejectExtra(_ m: URL) {
+        lock.lock(); defer { lock.unlock() }
+        guard let i = extras.firstIndex(where: { $0.mount == m }) else { return }
+        let e = extras.remove(at: i)
+        wipeContents(e.mount); sh("/sbin/umount", ["-f", e.mount.path]); try? FileManager.default.removeItem(at: e.mount)
+        sh("/usr/bin/hdiutil", ["detach", e.dev, "-force"])
+    }
+    static func ejectAll() { eject(); for e in extras { ejectExtra(e.mount) } }
 
     /// Overwrites file contents with zeros before the RAM disk is released.
     static func wipeContents(_ m: URL) {

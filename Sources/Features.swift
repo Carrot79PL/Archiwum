@@ -31,6 +31,10 @@ extension Engine {
     /// Extracts one entry onto the RAM disk and returns its URL (used when dragging out of the archive).
     static func extractBlocking(archive: URL, wrapped: Bool, password: String?, id: String, size: Int64) -> URL? {
         guard let d = RamDisk.ensure(bytes: max(size, 1 << 20)) else { return nil }
+        return extractInto(d, archive: archive, wrapped: wrapped, password: password, id: id)
+    }
+
+    static func extractInto(_ d: URL, archive: URL, wrapped: Bool, password: String?, id: String) -> URL? {
         var args = ["x", "-y", "-aoa", "-spd", "-o" + d.path]
         if let password { args.append("-p" + password) }
         let rc: Int32
