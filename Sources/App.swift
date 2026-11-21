@@ -35,6 +35,12 @@ struct JobResult: Identifiable {
     var reveal: URL?
 }
 
+/// Snapshot of an archive view, kept while a nested archive is open in the same window.
+struct ArchiveState {
+    var url: URL?; var entries: [Entry]; var info: ArchiveInfo; var cwd: [String]; var password: String?
+    var wrapped: Bool; var headerLocked: Bool; var warnings: [String]; var ownedMount: URL?
+}
+
 enum SortKey: String, CaseIterable, Identifiable {
     case name = "Nazwa", size = "Rozmiar", packed = "Po spakowaniu", date = "Data", type = "Typ"
     var id: String { rawValue }
@@ -111,9 +117,10 @@ struct PreviewItem: Identifiable { let id = UUID(); var name: String; var data: 
     let id = UUID()
     weak var window: NSWindow?
     @Published var dropChoice: DropChoice?
+    @Published var stack: [ArchiveState] = []
     init() { Registry.add(self); startLockTimer() }
     var ownedMount: URL?
-    /// Archive inside an archive: extract it to its own RAM disk and open it in a new window (no Archive Utility, no disk).
+    /// Archive inside an archive: extract it to its own RAM disk and open it in this window (⌥ = new window).
     func openNested(_ id: String) async {
         guard let u = url else { return }
         let size = entries.first(where: { $0.path == id })?.size ?? 0
@@ -126,11 +133,42 @@ struct PreviewItem: Identifiable { let id = UUID(); var name: String; var data: 
             return r
         }.value
         busy = nil
-        if let out { Registry.openInNewWindow(out) } else { notice = "Nie udało się otworzyć zagnieżdżonego archiwum „\((id as NSString).lastPathComponent)”.\n" + RamDisk.lastError }
+        guard let out else { notice = "Nie udało się otworzyć zagnieżdżonego archiwum „\((id as NSString).lastPathComponent)”.\n" + RamDisk.lastError; return }
+        if NSEvent.modifierFlags.contains(.option) { Registry.openInNewWindow(out); return }
+        await enter(out)
+    }
+
+    func snapshot() -> ArchiveState {
+        ArchiveState(url: url, entries: entries, info: info, cwd: cwd, password: password, wrapped: wrapped, headerLocked: headerLocked, warnings: warnings, ownedMount: ownedMount)
+    }
+    func enter(_ u: URL) async {
+        let saved = snapshot()
+        stack.append(saved)
+        ownedMount = nil
+        await open(u)
+        if url != u && pendingOpen != u {            // opening failed: stay in the parent
+            stack.removeLast(); if let m = RamDisk.extraMount(containing: u) { RamDisk.ejectExtra(m) }
+            ownedMount = saved.ownedMount
+        }
+    }
+    /// Back to the parent archive (`levels` = how many nested levels to leave).
+    func leaveNested(levels: Int = 1) {
+        for _ in 0..<levels {
+            guard let prev = stack.popLast() else { break }
+            if let m = ownedMount { RamDisk.ejectExtra(m) }
+            url = prev.url; entries = prev.entries; info = prev.info; cwd = prev.cwd; password = prev.password
+            wrapped = prev.wrapped; headerLocked = prev.headerLocked; warnings = prev.warnings; ownedMount = prev.ownedMount
+            pendingOpen = nil; query = ""; sha = nil; thumbs = [:]
+        }
+    }
+    func dropNestedStack() {
+        for st in stack { if let m = st.ownedMount { RamDisk.ejectExtra(m) } }
+        if let m = ownedMount { RamDisk.ejectExtra(m); ownedMount = nil }
+        stack = []
     }
     func attach(_ w: NSWindow) {
         NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: w, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { if let m = self?.ownedMount { RamDisk.ejectExtra(m); self?.ownedMount = nil } }
+            MainActor.assumeIsolated { self?.dropNestedStack() }
         }
         window = w
         if w.isKeyWindow { Registry.active = self }
@@ -546,7 +584,7 @@ struct PreviewItem: Identifiable { let id = UUID(); var name: String; var data: 
     /// Zapomina hasło; jeśli nazwy plików były zaszyfrowane, zamyka też listę.
     func lock() {
         password = nil; wipe()
-        if headerLocked { url = nil; entries = []; cwd = []; headerLocked = false }
+        if headerLocked { dropNestedStack(); url = nil; entries = []; cwd = []; headerLocked = false }
         notice = nil
     }
     func cancel() { proc?.terminate() }

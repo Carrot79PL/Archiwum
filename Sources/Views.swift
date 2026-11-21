@@ -129,6 +129,7 @@ struct ContentView: View {
         .background { GlassBackground(radius: 0) }
         .background(WindowGlass(onWindow: { w in s.attach(w) }))
         .navigationTitle(s.url?.lastPathComponent ?? "Archiwum")
+        .onChange(of: s.url) { _, _ in sel = []; anchor = nil }
         .environment(\.colorScheme, .dark)
         .onDrop(of: [.fileURL, .item], isTargeted: $targeted) { providers in s.handleProviders(providers) }
         .overlay {
@@ -193,6 +194,10 @@ struct ContentView: View {
 
     func headerRow(compact: Bool) -> some View {
         HStack(spacing: 10) {
+            if !s.stack.isEmpty {
+                Button { s.leaveNested() } label: { PillIcon(icon: "arrow.uturn.backward", label: "Wróć do archiwum nadrzędnego") }.buttonStyle(PressStyle())
+                    .help("Wróć do „\(s.stack.last?.url?.lastPathComponent ?? "")”").keyboardShortcut("[", modifiers: [.command, .shift])
+            }
             if !s.cwd.isEmpty {
                 Button { s.cwd.removeLast(); sel = [] } label: { PillIcon(icon: "chevron.left", label: "W górę") }.buttonStyle(PressStyle()).keyboardShortcut("[", modifiers: .command)
             }
@@ -284,6 +289,10 @@ struct ContentView: View {
 
     var breadcrumb: some View {
         HStack(spacing: 4) {
+            ForEach(Array(s.stack.enumerated()), id: \.offset) { i, st in
+                Button { s.leaveNested(levels: s.stack.count - i) } label: { Label(st.url?.deletingPathExtension().lastPathComponent ?? "", systemImage: "archivebox").lineLimit(1) }.buttonStyle(PressStyle())
+                Image(systemName: "chevron.right.2").font(.caption2).foregroundStyle(.white.opacity(0.4))
+            }
             Button { s.cwd = []; sel = [] } label: { Label(s.baseName, systemImage: "archivebox").lineLimit(1) }.buttonStyle(PressStyle())
             ForEach(Array(s.cwd.enumerated()), id: \.offset) { i, c in
                 Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.white.opacity(0.4))

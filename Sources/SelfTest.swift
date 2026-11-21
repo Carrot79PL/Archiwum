@@ -114,15 +114,13 @@ import CryptoKit
         let p2 = RawProcess(); p2.executableURL = Engine.sevenZip; p2.arguments = ["a", "-spd", dir.appendingPathComponent("outer.7z").path, "inner.zip"]; p2.currentDirectoryURL = dir
         p2.standardOutput = FileHandle.nullDevice; p2.standardError = FileHandle.nullDevice; p2.standardInput = FileHandle.nullDevice; try? p2.run(); p2.waitUntilExit()
         await s.open(dir.appendingPathComponent("outer.7z"))
-        let before = Registry.pending.count
         await s.perform(.open(["inner.zip"]))
-        check("zagnieżdżone archiwum: przekazane do nowego okna", Registry.pending.count == before + 1, Registry.pending.last?.path ?? "")
-        if let nu = Registry.pending.last {
-            let t = Store(); await t.open(nu)
-            check("zagnieżdżone archiwum: otwarte jako archiwum", t.entries.contains { $0.path == "w.txt" }, "\(t.entries.count) wpisów")
-            check("zagnieżdżone: osobny dysk RAM", t.ownedMount != nil)
-            if let m = t.ownedMount { RamDisk.ejectExtra(m) }
-        }
+        check("zagnieżdżone archiwum otwarte w tym samym oknie", s.stack.count == 1 && s.url?.lastPathComponent == "inner.zip" && s.entries.contains { $0.path == "w.txt" }, "url=\(s.url?.lastPathComponent ?? "-") stack=\(s.stack.count)")
+        check("zagnieżdżone: osobny dysk RAM", s.ownedMount != nil)
+        let mnt = s.ownedMount
+        s.leaveNested()
+        check("powrót do archiwum nadrzędnego", s.stack.isEmpty && s.url?.lastPathComponent == "outer.7z" && s.entries.contains { $0.path == "inner.zip" })
+        check("dysk RAM zagnieżdżonego zwolniony", mnt.map { !fm.fileExists(atPath: $0.path) } ?? false)
         Registry.pending.removeAll()
         await s.open(archive)
     }
